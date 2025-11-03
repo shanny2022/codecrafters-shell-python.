@@ -2,15 +2,32 @@ import sys
 import os
 import subprocess
 import shlex
-import readline  # NEW: Enables autocompletion and line editing
+import readline
 
 
 def completer(text, state):
-    """Autocomplete function for builtins."""
+    """Autocomplete builtins and external executables in PATH."""
     builtins = ["echo", "exit"]
+
+    # Collect matches from builtins
     matches = [b for b in builtins if b.startswith(text)]
+
+    # Collect executables from PATH
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not os.path.isdir(directory):
+            continue
+        try:
+            for fname in os.listdir(directory):
+                full_path = os.path.join(directory, fname)
+                if fname.startswith(text) and os.access(full_path, os.X_OK) and not os.path.isdir(full_path):
+                    matches.append(fname)
+        except Exception:
+            continue
+
+    # Remove duplicates
+    matches = sorted(set(matches))
+
     if state < len(matches):
-        # readline automatically appends a space after a completion
         return matches[state] + " "
     return None
 
@@ -18,7 +35,7 @@ def completer(text, state):
 def main():
     # Register completer
     readline.set_completer(completer)
-    readline.parse_and_bind("tab: complete")  # Enable TAB completion
+    readline.parse_and_bind("tab: complete")
 
     builtins = {"echo", "exit", "type", "pwd", "cd"}
 
