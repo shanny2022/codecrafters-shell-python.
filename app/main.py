@@ -1,3 +1,4 @@
+import subprocess
 from subprocess import Popen
 import os
 from os.path import basename
@@ -6,104 +7,59 @@ import sys
 import shutil
 import platform
 
-IS_EXECUTABLE = 1
-IS_BUILT_IN = 0
+def run_command(command):
+    """Run a shell command and return its output."""
+    process = Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    stdout, stderr = process.communicate()
+    return stdout.decode(), stderr.decode(), process.returncode
+def list_executables_in_path():
+    """List all executable files in the system PATH."""
+    paths = os.getenv('PATH', '').split(os.pathsep)
+    executables = set()
+    for path in paths:
+        if os.path.isdir(path):
+            for item in os.listdir(path):
+                item_path = os.path.join(path, item)
+                if os.access(item_path, os.X_OK) and not os.path.isdir(item_path):
+                    executables.add(item)
+    return sorted(executables)
+def longest_common_prefix(strs):
+    """Find the longest common prefix string amongst an array of strings."""
+    if not strs:
+        return ""
+    shortest = min(strs, key=len)
+    for i, char in enumerate(shortest):
+        for other in strs:
+            if other[i] != char:
+                return shortest[:i]
+    return shortest
+class Completer:
+    def __init__(self, commands):
+        self.commands = commands
 
-# "built-in"
-def line_to_basename(stdin, stdout, _unused_args):
-    for line in stdin:
-        line = line.strip()
+    def complete(self, text):
+        matches = [cmd for cmd in self.commands if cmd.startswith(text)]
+        if not matches:
+            return text  # No matches, return original text
+        if len(matches) == 1:
+            return matches[0] + ' '  # Single match, return with space
+        prefix = longest_common_prefix(matches)
+        if prefix != text:
+            return prefix  # Return the longest common prefix
+        return text  # No further completion possible
+def main():
+    executables = list_executables_in_path()
+    completer = Completer(executables)
+
+    while True:
         try:
-            print(basename(line), file=stdout)
-        except Exception:
-            pass
-    try:
-        stdout.close()
-    except Exception:
-        pass
-
-
-def is_windows():
-    return platform.system().lower().startswith("win")
-
-
-# Build pipeline commands in a platform-aware way
-if is_windows():
-    # Windows: use where and findstr
-    userprofile = os.environ.get('USERPROFILE', '.')
-    cmd_where = fr'where /r "{userprofile}" *.txt'
-    cmd_filter = r'findstr /i "test.*\.txt$"'
-else:
-    # POSIX: use find and grep
-    # Search from HOME if available, else current directory
-    homedir = os.environ.get('HOME', '.')
-    # find prints full paths; use -type f and -name pattern
-    # The pattern '*.txt' is quoted to be interpreted by find, not the shell.
-    cmd_where = fr'find "{homedir}" -type f -name "*.txt"'
-    # grep -i -E to use the regex with case-insensitive matching
-    cmd_filter = r'grep -i -E "test.*\.txt$" || true'  # || true prevents non-zero exit when grep finds nothing
-
-pipeline = [
-    (cmd_where, IS_EXECUTABLE),
-    (line_to_basename, IS_BUILT_IN),
-    (cmd_filter, IS_EXECUTABLE),
-]
-
-
-def pipeline_test(pipeline, pl_stdin=sys.stdin, pl_stdout=sys.stdout):
-    processes = []
-    threads = []
-
-    # Create pipes (one per connection between pipeline stages)
-    read_fd = []
-    write_fd = []
-    for _i in range(len(pipeline) - 1):
-        r, w = os.pipe()
-        read_fd.append(r)
-        write_fd.append(w)
-
-    # Add the ends. We dup to ensure we don't lose our Shell's hold
-    read_fd = [os.dup(pl_stdin.fileno())] + read_fd
-    write_fd = write_fd + [os.dup(pl_stdout.fileno())]
-
-    # We wrap built-ins in thread-safe file objects so we can call .close on them later.
-    thread_files = []
-    for (cmd, kind), w_fd, r_fd in zip(pipeline, write_fd, read_fd):
-        if kind == IS_EXECUTABLE:
-            # Use shell=True because commands are provided as shell strings (use with care).
-            # Ensure the command exists on PATH where relevant; on POSIX we used find/grep so they should exist.
-            process = Popen(cmd, stdin=r_fd, stdout=w_fd, shell=True)
-            # Subprocess inherited the fd, so close our copies
-            try:
-                os.close(r_fd)
-            except OSError:
-                pass
-            try:
-                os.close(w_fd)
-            except OSError:
-                pass
-            processes.append(process)
-        elif kind == IS_BUILT_IN:
-            # Wrap fds in file objects for the Python built-in implementation
-            r_file = os.fdopen(r_fd, 'r')
-            w_file = os.fdopen(w_fd, 'w')
-            thread_files.extend((r_file, w_file))
-            thread = threading.Thread(target=cmd, args=(r_file, w_file, "unused built-in arg"))
-            threads.append(thread)
-            thread.start()
-
-    for p in processes:
-        p.wait()
-    for t in threads:
-        t.join()
-
-    # Ensure we closed our thread files
-    for f in thread_files:
-        try:
-            f.close()
-        except Exception:
-            pass
-
-
-if __name__ == '__main__':
-    pipeline_test(pipeline)
+            user_input = input("$ ")
+            completed_input = completer.complete(user_input)
+            print(completed_input)
+        except EOFError:
+            break
+        except KeyboardInterrupt:
+            print("\nExiting shell.")
+            break
+if __name__ == "__main__":
+    main()
