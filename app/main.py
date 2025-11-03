@@ -1,4 +1,5 @@
 import sys
+import os
 
 def main():
     # Define builtins
@@ -37,12 +38,29 @@ def main():
         elif cmd == "type":
             if len(parts) == 1:
                 print("type: not found")
-            else:
-                target = parts[1].strip()
-                if target in builtins:
-                    print(f"{target} is a shell builtin")
-                else:
-                    print(f"{target}: not found")
+                continue
+
+            target = parts[1].strip()
+
+            # Case 1: Builtin command
+            if target in builtins:
+                print(f"{target} is a shell builtin")
+                continue
+
+            # Case 2: Search PATH for executables
+            path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+            found = False
+
+            for directory in path_dirs:
+                full_path = os.path.join(directory, target)
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                    print(f"{target} is {full_path}")
+                    found = True
+                    break
+
+            # Case 3: Not found
+            if not found:
+                print(f"{target}: not found")
 
         # Handle invalid commands
         else:
