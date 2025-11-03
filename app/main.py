@@ -8,21 +8,30 @@ def main():
         try:
             command = input().strip()
         except EOFError:
-            break  # Exit if user sends Ctrl+D
+            break  # End program on Ctrl+D
 
         if not command:
-            continue  # Ignore empty input
+            continue
 
-        # Handle 'exit' builtin
+        # Handle exit
         if command.startswith("exit"):
             parts = command.split()
             if len(parts) > 1 and parts[1].isdigit():
-                sys.exit(int(parts[1]))  # exit with given status
+                sys.exit(int(parts[1]))
             else:
-                sys.exit(0)  # default exit code 0
+                sys.exit(0)
 
-        # Otherwise, invalid command
-        print(f"{command}: command not found")
+        # Handle echo
+        elif command.startswith("echo"):
+            parts = command.split(maxsplit=1)
+            if len(parts) > 1:
+                print(parts[1])
+            else:
+                print("")  # echo with no args prints a blank line
+
+        # Handle everything else
+        else:
+            print(f"{command}: command not found")
 
 if __name__ == "__main__":
     main()
