@@ -4,7 +4,7 @@ import subprocess
 import shlex
 import readline
 
-# --- Global state to track repeated TAB presses ---
+# Track previous prefix and tab state
 last_prefix = ""
 tab_press_count = 0
 
@@ -25,8 +25,21 @@ def get_executables_with_prefix(prefix):
     return sorted(results)
 
 
+def longest_common_prefix(strings):
+    """Compute the longest common prefix among a list of strings."""
+    if not strings:
+        return ""
+    prefix = strings[0]
+    for s in strings[1:]:
+        while not s.startswith(prefix):
+            prefix = prefix[:-1]
+            if not prefix:
+                return ""
+    return prefix
+
+
 def completer(text, state):
-    """Autocomplete builtins and executables with multi-match support."""
+    """Autocomplete builtins and executables with longest-common-prefix support."""
     global last_prefix, tab_press_count
 
     builtins = ["echo", "exit"]
@@ -34,31 +47,38 @@ def completer(text, state):
     matches += get_executables_with_prefix(text)
     matches = sorted(set(matches))
 
-    # --- Handle multi-match logic ---
+    # If only one match, just complete it
+    if len(matches) == 1:
+        tab_press_count = 0
+        return matches[0] + " "
+
+    # If multiple matches, find longest common prefix
     if len(matches) > 1:
-        # If user presses TAB with the same prefix again → show all matches
-        if last_prefix == text:
-            tab_press_count += 1
+        common_prefix = longest_common_prefix(matches)
+        if len(common_prefix) > len(text):
+            # Auto-complete to longest common prefix
+            tab_press_count = 0
+            return common_prefix
         else:
-            tab_press_count = 1
-            last_prefix = text
+            # Handle repeated TAB presses like before
+            if last_prefix == text:
+                tab_press_count += 1
+            else:
+                tab_press_count = 1
+                last_prefix = text
 
-        if tab_press_count == 1:
-            # First TAB → just ring a bell
-            sys.stdout.write("\a")
-            sys.stdout.flush()
-            return None
-        elif tab_press_count == 2:
-            # Second TAB → list all matches, then redisplay prompt
-            sys.stdout.write("\n" + "  ".join(matches) + "\n")
-            sys.stdout.write(f"$ {text}")
-            sys.stdout.flush()
-            return None
-    else:
-        tab_press_count = 0  # reset when unique or no match
+            if tab_press_count == 1:
+                # First TAB press → ring bell
+                sys.stdout.write("\a")
+                sys.stdout.flush()
+                return None
+            elif tab_press_count == 2:
+                # Second TAB → list all matches
+                sys.stdout.write("\n" + "  ".join(matches) + "\n")
+                sys.stdout.write(f"$ {text}")
+                sys.stdout.flush()
+                return None
 
-    if state < len(matches):
-        return matches[state] + " "
     return None
 
 
@@ -89,7 +109,7 @@ def main():
         if not parts:
             continue
 
-        # --- Handle redirections (>, >>, etc.) ---
+        # --- Handle redirections ---
         output_file = None
         error_file = None
         append_stdout = False
