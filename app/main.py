@@ -1,11 +1,9 @@
 import sys
 import os
 import subprocess
-import shlex  # for proper shell-style parsing
-
+import shlex
 
 def main():
-    # Define shell builtins
     builtins = {"echo", "exit", "type", "pwd", "cd"}
 
     while True:
@@ -15,42 +13,64 @@ def main():
         try:
             command_line = input().strip()
         except EOFError:
-            break  # End on Ctrl+D
+            break
 
         if not command_line:
             continue
 
-        # Use shlex to handle quotes properly
         try:
-            parts = shlex.split(command_line)
+            lexer = shlex.shlex(command_line, posix=True)
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            parts = list(lexer)
         except ValueError:
-            # Handles unmatched quotes gracefully
             print("Error: unmatched quotes")
             continue
 
         if not parts:
             continue
 
+        # --- Handle output redirection (>, 1>) ---
+        output_file = None
+        if ">" in parts:
+            idx = parts.index(">")
+            if idx + 1 < len(parts):
+                output_file = parts[idx + 1]
+                parts = parts[:idx]
+        elif "1>" in parts:
+            idx = parts.index("1>")
+            if idx + 1 < len(parts):
+                output_file = parts[idx + 1]
+                parts = parts[:idx]
+
+        if not parts:
+            continue
+
         cmd = parts[0]
 
-        # Handle 'exit'
+        # Builtins
         if cmd == "exit":
-            if len(parts) > 1 and parts[1].isdigit():
-                sys.exit(int(parts[1]))
-            else:
-                sys.exit(0)
+            code = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+            sys.exit(code)
 
-        # Handle 'echo'
         elif cmd == "echo":
-            print(" ".join(parts[1:]))
+            output_text = " ".join(parts[1:])
+            if output_file:
+                with open(output_file, "w") as f:
+                    f.write(output_text + "\n")
+            else:
+                print(output_text)
             continue
 
-        # Handle 'pwd'
         elif cmd == "pwd":
-            print(os.getcwd())
+            result = os.getcwd()
+            if output_file:
+                with open(output_file, "w") as f:
+                    f.write(result + "\n")
+            else:
+                print(result)
             continue
 
-        # Handle 'cd'
         elif cmd == "cd":
             if len(parts) < 2:
                 continue
@@ -63,46 +83,36 @@ def main():
                 print(f"cd: {path}: No such file or directory")
             continue
 
-        # Handle 'type'
         elif cmd == "type":
             if len(parts) == 1:
                 print("type: not found")
                 continue
-
             target = parts[1]
             if target in builtins:
-                print(f"{target} is a shell builtin")
+                text = f"{target} is a shell builtin"
             else:
                 found = False
                 for directory in os.environ.get("PATH", "").split(os.pathsep):
                     full_path = os.path.join(directory, target)
                     if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                        print(f"{target} is {full_path}")
+                        text = f"{target} is {full_path}"
                         found = True
                         break
                 if not found:
-                    print(f"{target}: not found")
+                    text = f"{target}: not found"
+            if output_file:
+                with open(output_file, "w") as f:
+                    f.write(text + "\n")
+            else:
+                print(text)
             continue
 
-        # Handle external programs
+        # External programs
+        found_path = None
+        if os.path.isfile(cmd) and os.access(cmd, os.X_OK):
+            found_path = cmd
         else:
-            found_path = None
             for directory in os.environ.get("PATH", "").split(os.pathsep):
                 full_path = os.path.join(directory, cmd)
-                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                    found_path = full_path
-                    break
-
-            if found_path:
-                try:
-                    # Use original cmd for argv[0], keep quoting behavior
-                    subprocess.run([cmd] + parts[1:], executable=found_path)
-                except Exception as e:
-                    print(f"{cmd}: execution failed ({e})")
-            else:
-                print(f"{cmd}: command not found")
-
-
-if __name__ == "__main__":
-    main()
+                if os.path.isfile(full_path) and os.access(full_path,
 
