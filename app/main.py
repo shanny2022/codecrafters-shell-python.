@@ -4,7 +4,7 @@ import subprocess
 
 def main():
     # Define shell builtins
-    builtins = {"echo", "exit", "type", "pwd"}
+    builtins = {"echo", "exit", "type", "pwd", "cd"}
 
     while True:
         sys.stdout.write("$ ")
@@ -36,6 +36,17 @@ def main():
         # Handle 'pwd'
         elif cmd == "pwd":
             print(os.getcwd())
+            continue
+
+        # Handle 'cd'
+        elif cmd == "cd":
+            if len(parts) < 2:
+                continue  # do nothing if no argument provided
+            path = parts[1]
+            try:
+                os.chdir(path)
+            except FileNotFoundError:
+                print(f"cd: {path}: No such file or directory")
             continue
 
         # Handle 'type'
@@ -72,6 +83,7 @@ def main():
 
             if found_path:
                 try:
+                    # Ensure argv[0] is the command name, not the full path
                     subprocess.run([cmd] + parts[1:], executable=found_path)
                 except Exception as e:
                     print(f"{cmd}: execution failed ({e})")
