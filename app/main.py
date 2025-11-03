@@ -1,6 +1,9 @@
 import sys
 
 def main():
+    # Define builtins
+    builtins = {"echo", "exit", "type"}
+
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
@@ -8,28 +11,40 @@ def main():
         try:
             command = input().strip()
         except EOFError:
-            break  # End program on Ctrl+D
+            break  # Exit cleanly on Ctrl+D
 
         if not command:
             continue
 
-        # Handle exit
-        if command.startswith("exit"):
-            parts = command.split()
+        parts = command.split(maxsplit=1)
+        cmd = parts[0]
+
+        # Handle 'exit'
+        if cmd == "exit":
             if len(parts) > 1 and parts[1].isdigit():
                 sys.exit(int(parts[1]))
             else:
                 sys.exit(0)
 
-        # Handle echo
-        elif command.startswith("echo"):
-            parts = command.split(maxsplit=1)
+        # Handle 'echo'
+        elif cmd == "echo":
             if len(parts) > 1:
                 print(parts[1])
             else:
-                print("")  # echo with no args prints a blank line
+                print("")
 
-        # Handle everything else
+        # Handle 'type'
+        elif cmd == "type":
+            if len(parts) == 1:
+                print("type: not found")
+            else:
+                target = parts[1].strip()
+                if target in builtins:
+                    print(f"{target} is a shell builtin")
+                else:
+                    print(f"{target}: not found")
+
+        # Handle invalid commands
         else:
             print(f"{command}: command not found")
 
