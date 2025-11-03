@@ -9,20 +9,25 @@ import subprocess
 def handle_builtin(parts):
     # parts is a list of tokens for built-in commands: echo, exit, type, pwd, cd
     cmd = parts[0] if parts else ""
+
     if cmd == "echo":
         # print arguments joined by spaces and a trailing newline
         print(" ".join(parts[1:]))
+
     elif cmd == "exit":
         # exit the program
         sys.exit(0)
+
     elif cmd == "pwd":
         print(os.getcwd())
-    elif cmd == "cd":
+
+    elif cmd == "cd":   # <-- THIS IS THE 'cd' BLOCK
         target = parts[1] if len(parts) > 1 else os.path.expanduser("~")
         try:
-            os.chdir(target)
+            os.chdir(target)   # attempt to change directory
         except Exception as e:
-            print(f"cd: {e}")
+            print(f"cd: {e}")  # if it fails, print the error message
+
     elif cmd == "type":
         name = parts[1] if len(parts) > 1 else ""
         if name in {"echo", "exit", "type", "pwd", "cd"}:
