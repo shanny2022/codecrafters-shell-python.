@@ -1,6 +1,8 @@
 import sys
 import os
 import subprocess
+import shlex  # for proper shell-style parsing
+
 
 def main():
     # Define shell builtins
@@ -18,7 +20,17 @@ def main():
         if not command_line:
             continue
 
-        parts = command_line.split()
+        # Use shlex to handle quotes properly
+        try:
+            parts = shlex.split(command_line)
+        except ValueError:
+            # Handles unmatched quotes gracefully
+            print("Error: unmatched quotes")
+            continue
+
+        if not parts:
+            continue
+
         cmd = parts[0]
 
         # Handle 'exit'
@@ -41,14 +53,10 @@ def main():
         # Handle 'cd'
         elif cmd == "cd":
             if len(parts) < 2:
-                continue  # do nothing if no path given
-
+                continue
             path = parts[1]
-
-            # Handle ~ for home directory
             if path.startswith("~"):
                 path = os.path.expanduser(path)
-
             try:
                 os.chdir(path)
             except FileNotFoundError:
@@ -66,8 +74,7 @@ def main():
                 print(f"{target} is a shell builtin")
             else:
                 found = False
-                path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-                for directory in path_dirs:
+                for directory in os.environ.get("PATH", "").split(os.pathsep):
                     full_path = os.path.join(directory, target)
                     if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
                         print(f"{target} is {full_path}")
@@ -80,8 +87,7 @@ def main():
         # Handle external programs
         else:
             found_path = None
-            path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-            for directory in path_dirs:
+            for directory in os.environ.get("PATH", "").split(os.pathsep):
                 full_path = os.path.join(directory, cmd)
                 if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
                     found_path = full_path
@@ -89,11 +95,13 @@ def main():
 
             if found_path:
                 try:
+                    # Use original cmd for argv[0], keep quoting behavior
                     subprocess.run([cmd] + parts[1:], executable=found_path)
                 except Exception as e:
                     print(f"{cmd}: execution failed ({e})")
             else:
                 print(f"{cmd}: command not found")
+
 
 if __name__ == "__main__":
     main()
