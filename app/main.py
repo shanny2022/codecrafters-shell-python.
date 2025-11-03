@@ -133,7 +133,7 @@ def parse_command(command: str):
 
 def main():
     # Wait for user input
-    command = input("$")
+    command = input("$ ")
     parse_command(command)
     main()
 
