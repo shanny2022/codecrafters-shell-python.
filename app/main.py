@@ -67,7 +67,8 @@ def main():
 
             if found_path:
                 try:
-                    subprocess.run([found_path] + parts[1:])
+                    # Run using the command name as argv[0]
+                    subprocess.run([cmd] + parts[1:], executable=found_path)
                 except Exception as e:
                     print(f"{cmd}: execution failed ({e})")
             else:
