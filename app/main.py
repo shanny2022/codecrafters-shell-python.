@@ -4,7 +4,7 @@ import subprocess
 
 def main():
     # Define shell builtins
-    builtins = {"echo", "exit", "type"}
+    builtins = {"echo", "exit", "type", "pwd"}
 
     while True:
         sys.stdout.write("$ ")
@@ -31,6 +31,11 @@ def main():
         # Handle 'echo'
         elif cmd == "echo":
             print(" ".join(parts[1:]))
+            continue
+
+        # Handle 'pwd'
+        elif cmd == "pwd":
+            print(os.getcwd())
             continue
 
         # Handle 'type'
@@ -67,7 +72,6 @@ def main():
 
             if found_path:
                 try:
-                    # Run using the command name as argv[0]
                     subprocess.run([cmd] + parts[1:], executable=found_path)
                 except Exception as e:
                     print(f"{cmd}: execution failed ({e})")
