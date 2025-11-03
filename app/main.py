@@ -1,4 +1,4 @@
-# File: app/main.py
+#!/usr/bin/env python3
 # Shell with: prompt, pipelines, in-process built-ins (type/exit), and TAB autocomplete.
 
 from __future__ import annotations
@@ -241,20 +241,23 @@ def complete_buffer_on_tab(buffer: str) -> tuple[str, str]:
 
 # ---------- REPL (char-by-char to support TAB) ----------
 
-def repl() -> None:
+def repl(interactive: bool) -> None:
     while True:
-        print_prompt()
+        if interactive:
+            print_prompt()
         buf = ""
         while True:
             ch = sys.stdin.read(1)
             if ch == "":
                 return  # EOF
             if ch == "\n":
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                if interactive:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                # Only execute non-empty lines (trimmed)
                 if buf.strip():
                     execute_pipeline(buf)
-                break  # re-prompt
+                break  # re-prompt (or continue consuming piped input)
             if ch == "\t":
                 new_buf, suffix = complete_buffer_on_tab(buf)
                 if suffix:
@@ -265,18 +268,22 @@ def repl() -> None:
             if ch in ("\x7f", "\b"):  # Backspace support
                 if buf:
                     buf = buf[:-1]
-                    # erase last char visually
-                    sys.stdout.write("\b \b")
-                    sys.stdout.flush()
+                    # erase last char visually only in interactive mode
+                    if interactive:
+                        sys.stdout.write("\b \b")
+                        sys.stdout.flush()
                 continue
 
             buf += ch
-            sys.stdout.write(ch)
-            sys.stdout.flush()
+            # echo typed characters only in interactive mode
+            if interactive:
+                sys.stdout.write(ch)
+                sys.stdout.flush()
 
 
 def main() -> None:
-    repl()
+    interactive = sys.stdin.isatty()
+    repl(interactive)
 
 
 if __name__ == "__main__":
