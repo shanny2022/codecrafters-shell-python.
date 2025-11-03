@@ -1,52 +1,53 @@
 #!/usr/bin/env bash
-# your_program.sh - execute commands read from stdin or passed as arguments
-# Do NOT print the command itself; only print the command output.
+# your_program.sh - simple interactive runner used by the test harness.
+# Behavior required by the tests:
+#  - Before each command, print the prompt string "$ " (and flush).
+#  - Do NOT echo the command itself to stdout.
+#  - Execute the command and leave only the command output on stdout.
 set -euo pipefail
-
-# Disable debug printing if accidentally left enabled
 set +x
 
 strip_prompt() {
   local s="$1"
-  # Remove common leading prompt markers such as "$ " or "> "
-  # Remove leading and trailing whitespace
-  # First remove leading whitespace
+  # Trim leading whitespace
   s="${s#"${s%%[![:space:]]*}"}"
-  # Remove leading prompt markers
+  # Remove common leading prompt markers such as "$ " or "> "
   s="${s#\$ }"
   s="${s#> }"
-  # Remove any remaining leading whitespace
+  # Trim leading and trailing whitespace
   s="${s#"${s%%[![:space:]]*}"}"
-  # Trim trailing whitespace
   s="${s%"${s##*[![:space:]]}"}"
   printf '%s' "$s"
 }
 
-# If arguments are provided, treat them as a single command string and run it.
+# If arguments provided, treat them as a single command string and run it
 if [ "$#" -gt 0 ]; then
-  # Join all args into a single command string and execute it without echoing.
-  cmd="$*"
+  cmd="$(printf '%s ' "$@")"
   cmd="$(strip_prompt "$cmd")"
-  # If the command is empty after stripping, exit
-  if [ -z "$cmd" ]; then
-    exit 0
+  if [ -n "$cmd" ]; then
+    eval "$cmd"
   fi
-  eval "$cmd"
   exit $?
 fi
 
-# Otherwise read lines from stdin and execute each non-empty line.
-while IFS= read -r line || [ -n "$line" ]; do
-  # Skip empty lines
+# Interactive mode: print prompt, read a line, execute it, repeat.
+# Print the prompt to stdout (tests expect this). Do NOT echo the command.
+while true; do
+  # Print prompt and flush
+  printf '$ '
+  # read a line; if EOF, exit loop
+  if ! IFS= read -r line; then
+    break
+  fi
+  # Skip empty/whitespace-only lines
   if [ -z "${line//[[:space:]]/}" ]; then
     continue
   fi
-  # Remove prompt prefixes and trim whitespace
+  # Remove leading prompt tokens if present
   line="$(strip_prompt "$line")"
-  # Skip again if empty after stripping
   if [ -z "$line" ]; then
     continue
   fi
-  # Execute the line without printing it
+  # Execute the input line (preserve shell features like pipelines)
   eval "$line"
 done
