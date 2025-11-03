@@ -114,5 +114,21 @@ def main():
         else:
             for directory in os.environ.get("PATH", "").split(os.pathsep):
                 full_path = os.path.join(directory, cmd)
-                if os.path.isfile(full_path) and os.access(full_path,
+                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                    found_path = full_path
+                    break
 
+        if found_path:
+            try:
+                if output_file:
+                    with open(output_file, "w") as f:
+                        subprocess.run([cmd] + parts[1:], executable=found_path, stdout=f)
+                else:
+                    subprocess.run([cmd] + parts[1:], executable=found_path)
+            except Exception as e:
+                print(f"{cmd}: execution failed ({e})")
+        else:
+            print(f"{cmd}: command not found")
+
+if __name__ == "__main__":
+    main()
