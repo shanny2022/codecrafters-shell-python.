@@ -30,11 +30,24 @@ def main():
         if not parts:
             continue
 
-        # --- Handle output redirection (>, 1>, 2>) ---
+        # --- Handle output redirection (>, 1>, 2>, >>, 1>>) ---
         output_file = None
         error_file = None
+        append_mode = False  # NEW flag for append
 
-        if ">" in parts:
+        if ">>" in parts:
+            idx = parts.index(">>")
+            if idx + 1 < len(parts):
+                output_file = parts[idx + 1]
+                append_mode = True
+                parts = parts[:idx]
+        elif "1>>" in parts:
+            idx = parts.index("1>>")
+            if idx + 1 < len(parts):
+                output_file = parts[idx + 1]
+                append_mode = True
+                parts = parts[:idx]
+        elif ">" in parts:
             idx = parts.index(">")
             if idx + 1 < len(parts):
                 output_file = parts[idx + 1]
@@ -50,9 +63,10 @@ def main():
                 error_file = parts[idx + 1]
                 parts = parts[:idx]
 
-        # ✅ Ensure files exist even if command has no output
+        # Ensure redirection files exist
         if output_file:
-            open(output_file, "w").close()
+            mode = "a" if append_mode else "w"
+            open(output_file, mode).close()
         if error_file:
             open(error_file, "w").close()
 
@@ -69,7 +83,8 @@ def main():
         elif cmd == "echo":
             text = " ".join(parts[1:])
             if output_file:
-                with open(output_file, "w") as f:
+                mode = "a" if append_mode else "w"
+                with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
                 print(text)
@@ -78,7 +93,8 @@ def main():
         elif cmd == "pwd":
             text = os.getcwd()
             if output_file:
-                with open(output_file, "w") as f:
+                mode = "a" if append_mode else "w"
+                with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
                 print(text)
@@ -118,9 +134,9 @@ def main():
                             break
                     if not found:
                         text = f"{target}: not found"
-
             if output_file:
-                with open(output_file, "w") as f:
+                mode = "a" if append_mode else "w"
+                with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
                 print(text)
@@ -139,7 +155,8 @@ def main():
 
         if found_path:
             try:
-                stdout_target = open(output_file, "w") if output_file else None
+                mode = "a" if append_mode else "w"
+                stdout_target = open(output_file, mode) if output_file else None
                 stderr_target = open(error_file, "w") if error_file else None
 
                 subprocess.run(
