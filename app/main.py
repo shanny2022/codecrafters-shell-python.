@@ -2,16 +2,29 @@ import sys
 import os
 import subprocess
 import shlex
+import readline  # NEW: Enables autocompletion and line editing
+
+
+def completer(text, state):
+    """Autocomplete function for builtins."""
+    builtins = ["echo", "exit"]
+    matches = [b for b in builtins if b.startswith(text)]
+    if state < len(matches):
+        # readline automatically appends a space after a completion
+        return matches[state] + " "
+    return None
+
 
 def main():
+    # Register completer
+    readline.set_completer(completer)
+    readline.parse_and_bind("tab: complete")  # Enable TAB completion
+
     builtins = {"echo", "exit", "type", "pwd", "cd"}
 
     while True:
-        sys.stdout.write("$ ")
-        sys.stdout.flush()
-
         try:
-            command_line = input().strip()
+            command_line = input("$ ").strip()
         except EOFError:
             break
 
@@ -36,7 +49,6 @@ def main():
         append_stdout = False
         append_stderr = False
 
-        # Append stdout
         if ">>" in parts:
             idx = parts.index(">>")
             if idx + 1 < len(parts):
@@ -49,8 +61,6 @@ def main():
                 output_file = parts[idx + 1]
                 append_stdout = True
                 parts = parts[:idx]
-
-        # Overwrite stdout
         elif ">" in parts:
             idx = parts.index(">")
             if idx + 1 < len(parts):
@@ -62,21 +72,18 @@ def main():
                 output_file = parts[idx + 1]
                 parts = parts[:idx]
 
-        # Append stderr
         if "2>>" in parts:
             idx = parts.index("2>>")
             if idx + 1 < len(parts):
                 error_file = parts[idx + 1]
                 append_stderr = True
                 parts = parts[:idx]
-        # Overwrite stderr
         elif "2>" in parts:
             idx = parts.index("2>")
             if idx + 1 < len(parts):
                 error_file = parts[idx + 1]
                 parts = parts[:idx]
 
-        # Ensure files exist (for correct shell behavior)
         if output_file:
             mode = "a" if append_stdout else "w"
             open(output_file, mode).close()
