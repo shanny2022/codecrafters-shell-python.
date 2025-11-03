@@ -30,23 +30,27 @@ def main():
         if not parts:
             continue
 
-        # --- Handle output redirection (>, 1>, 2>, >>, 1>>) ---
+        # --- Handle redirections (>, 1>, 2>, >>, 1>>, 2>>) ---
         output_file = None
         error_file = None
-        append_mode = False  # NEW flag for append
+        append_stdout = False
+        append_stderr = False
 
+        # Append stdout
         if ">>" in parts:
             idx = parts.index(">>")
             if idx + 1 < len(parts):
                 output_file = parts[idx + 1]
-                append_mode = True
+                append_stdout = True
                 parts = parts[:idx]
         elif "1>>" in parts:
             idx = parts.index("1>>")
             if idx + 1 < len(parts):
                 output_file = parts[idx + 1]
-                append_mode = True
+                append_stdout = True
                 parts = parts[:idx]
+
+        # Overwrite stdout
         elif ">" in parts:
             idx = parts.index(">")
             if idx + 1 < len(parts):
@@ -57,18 +61,28 @@ def main():
             if idx + 1 < len(parts):
                 output_file = parts[idx + 1]
                 parts = parts[:idx]
-        if "2>" in parts:
+
+        # Append stderr
+        if "2>>" in parts:
+            idx = parts.index("2>>")
+            if idx + 1 < len(parts):
+                error_file = parts[idx + 1]
+                append_stderr = True
+                parts = parts[:idx]
+        # Overwrite stderr
+        elif "2>" in parts:
             idx = parts.index("2>")
             if idx + 1 < len(parts):
                 error_file = parts[idx + 1]
                 parts = parts[:idx]
 
-        # Ensure redirection files exist
+        # Ensure files exist (for correct shell behavior)
         if output_file:
-            mode = "a" if append_mode else "w"
+            mode = "a" if append_stdout else "w"
             open(output_file, mode).close()
         if error_file:
-            open(error_file, "w").close()
+            mode = "a" if append_stderr else "w"
+            open(error_file, mode).close()
 
         if not parts:
             continue
@@ -83,7 +97,7 @@ def main():
         elif cmd == "echo":
             text = " ".join(parts[1:])
             if output_file:
-                mode = "a" if append_mode else "w"
+                mode = "a" if append_stdout else "w"
                 with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
@@ -93,7 +107,7 @@ def main():
         elif cmd == "pwd":
             text = os.getcwd()
             if output_file:
-                mode = "a" if append_mode else "w"
+                mode = "a" if append_stdout else "w"
                 with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
@@ -111,7 +125,8 @@ def main():
             except FileNotFoundError:
                 err_msg = f"cd: {path}: No such file or directory"
                 if error_file:
-                    with open(error_file, "w") as ef:
+                    mode = "a" if append_stderr else "w"
+                    with open(error_file, mode) as ef:
                         ef.write(err_msg + "\n")
                 else:
                     print(err_msg)
@@ -135,7 +150,7 @@ def main():
                     if not found:
                         text = f"{target}: not found"
             if output_file:
-                mode = "a" if append_mode else "w"
+                mode = "a" if append_stdout else "w"
                 with open(output_file, mode) as f:
                     f.write(text + "\n")
             else:
@@ -155,9 +170,11 @@ def main():
 
         if found_path:
             try:
-                mode = "a" if append_mode else "w"
-                stdout_target = open(output_file, mode) if output_file else None
-                stderr_target = open(error_file, "w") if error_file else None
+                stdout_mode = "a" if append_stdout else "w"
+                stderr_mode = "a" if append_stderr else "w"
+
+                stdout_target = open(output_file, stdout_mode) if output_file else None
+                stderr_target = open(error_file, stderr_mode) if error_file else None
 
                 subprocess.run(
                     [cmd] + parts[1:],
@@ -177,7 +194,8 @@ def main():
         else:
             err_msg = f"{cmd}: command not found"
             if error_file:
-                with open(error_file, "w") as ef:
+                mode = "a" if append_stderr else "w"
+                with open(error_file, mode) as ef:
                     ef.write(err_msg + "\n")
             else:
                 print(err_msg)
