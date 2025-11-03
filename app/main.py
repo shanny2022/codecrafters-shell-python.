@@ -3,6 +3,8 @@ import os
 from os.path import basename
 import threading
 import sys
+import shutil
+import platform
 
 IS_EXECUTABLE = 1
 IS_BUILT_IN = 0
@@ -15,14 +17,36 @@ def line_to_basename(stdin, stdout, _unused_args):
             print(basename(line), file=stdout)
         except Exception:
             pass
-    stdout.close()
+    try:
+        stdout.close()
+    except Exception:
+        pass
 
+
+def is_windows():
+    return platform.system().lower().startswith("win")
+
+
+# Build pipeline commands in a platform-aware way
+if is_windows():
+    # Windows: use where and findstr
+    userprofile = os.environ.get('USERPROFILE', '.')
+    cmd_where = fr'where /r "{userprofile}" *.txt'
+    cmd_filter = r'findstr /i "test.*\.txt$"'
+else:
+    # POSIX: use find and grep
+    # Search from HOME if available, else current directory
+    homedir = os.environ.get('HOME', '.')
+    # find prints full paths; use -type f and -name pattern
+    # The pattern '*.txt' is quoted to be interpreted by find, not the shell.
+    cmd_where = fr'find "{homedir}" -type f -name "*.txt"'
+    # grep -i -E to use the regex with case-insensitive matching
+    cmd_filter = r'grep -i -E "test.*\.txt$" || true'  # || true prevents non-zero exit when grep finds nothing
 
 pipeline = [
-    # fix: don't break the f-string with inner single-quotes; use double-quotes around USERPROFILE
-    (fr"where /r {os.environ.get('USERPROFILE', '.') } *.txt", IS_EXECUTABLE),
+    (cmd_where, IS_EXECUTABLE),
     (line_to_basename, IS_BUILT_IN),
-    (r'findstr /i "test.*\.txt$"', IS_EXECUTABLE),
+    (cmd_filter, IS_EXECUTABLE),
 ]
 
 
@@ -39,7 +63,6 @@ def pipeline_test(pipeline, pl_stdin=sys.stdin, pl_stdout=sys.stdout):
         write_fd.append(w)
 
     # Add the ends. We dup to ensure we don't lose our Shell's hold
-    # Note: pl_stdin and pl_stdout are file objects (sys.stdin/sys.stdout)
     read_fd = [os.dup(pl_stdin.fileno())] + read_fd
     write_fd = write_fd + [os.dup(pl_stdout.fileno())]
 
@@ -48,8 +71,7 @@ def pipeline_test(pipeline, pl_stdin=sys.stdin, pl_stdout=sys.stdout):
     for (cmd, kind), w_fd, r_fd in zip(pipeline, write_fd, read_fd):
         if kind == IS_EXECUTABLE:
             # Use shell=True because commands are provided as shell strings (use with care).
-            # Passing raw fds for stdin/stdout works on Python on POSIX; on Windows these are integers too,
-            # but behaviour can differ — keep in mind.
+            # Ensure the command exists on PATH where relevant; on POSIX we used find/grep so they should exist.
             process = Popen(cmd, stdin=r_fd, stdout=w_fd, shell=True)
             # Subprocess inherited the fd, so close our copies
             try:
