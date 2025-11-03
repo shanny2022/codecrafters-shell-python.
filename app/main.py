@@ -41,8 +41,14 @@ def main():
         # Handle 'cd'
         elif cmd == "cd":
             if len(parts) < 2:
-                continue  # do nothing if no argument provided
+                continue  # do nothing if no path given
+
             path = parts[1]
+
+            # Handle ~ for home directory
+            if path.startswith("~"):
+                path = os.path.expanduser(path)
+
             try:
                 os.chdir(path)
             except FileNotFoundError:
@@ -83,7 +89,6 @@ def main():
 
             if found_path:
                 try:
-                    # Ensure argv[0] is the command name, not the full path
                     subprocess.run([cmd] + parts[1:], executable=found_path)
                 except Exception as e:
                     print(f"{cmd}: execution failed ({e})")
