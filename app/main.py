@@ -30,8 +30,10 @@ def main():
         if not parts:
             continue
 
-        # --- Handle output redirection (>, 1>) ---
+        # --- Handle output redirection (>, 1>, 2>) ---
         output_file = None
+        error_file = None
+
         if ">" in parts:
             idx = parts.index(">")
             if idx + 1 < len(parts):
@@ -42,33 +44,38 @@ def main():
             if idx + 1 < len(parts):
                 output_file = parts[idx + 1]
                 parts = parts[:idx]
+        if "2>" in parts:
+            idx = parts.index("2>")
+            if idx + 1 < len(parts):
+                error_file = parts[idx + 1]
+                parts = parts[:idx]
 
         if not parts:
             continue
 
         cmd = parts[0]
 
-        # Builtins
+        # --- Builtins ---
         if cmd == "exit":
             code = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
             sys.exit(code)
 
         elif cmd == "echo":
-            output_text = " ".join(parts[1:])
+            text = " ".join(parts[1:])
             if output_file:
                 with open(output_file, "w") as f:
-                    f.write(output_text + "\n")
+                    f.write(text + "\n")
             else:
-                print(output_text)
+                print(text)
             continue
 
         elif cmd == "pwd":
-            result = os.getcwd()
+            text = os.getcwd()
             if output_file:
                 with open(output_file, "w") as f:
-                    f.write(result + "\n")
+                    f.write(text + "\n")
             else:
-                print(result)
+                print(text)
             continue
 
         elif cmd == "cd":
@@ -80,26 +87,32 @@ def main():
             try:
                 os.chdir(path)
             except FileNotFoundError:
-                print(f"cd: {path}: No such file or directory")
+                error_msg = f"cd: {path}: No such file or directory"
+                if error_file:
+                    with open(error_file, "w") as ef:
+                        ef.write(error_msg + "\n")
+                else:
+                    print(error_msg)
             continue
 
         elif cmd == "type":
             if len(parts) == 1:
-                print("type: not found")
-                continue
-            target = parts[1]
-            if target in builtins:
-                text = f"{target} is a shell builtin"
+                text = "type: not found"
             else:
-                found = False
-                for directory in os.environ.get("PATH", "").split(os.pathsep):
-                    full_path = os.path.join(directory, target)
-                    if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                        text = f"{target} is {full_path}"
-                        found = True
-                        break
-                if not found:
-                    text = f"{target}: not found"
+                target = parts[1]
+                if target in builtins:
+                    text = f"{target} is a shell builtin"
+                else:
+                    found = False
+                    for directory in os.environ.get("PATH", "").split(os.pathsep):
+                        full_path = os.path.join(directory, target)
+                        if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                            text = f"{target} is {full_path}"
+                            found = True
+                            break
+                    if not found:
+                        text = f"{target}: not found"
+
             if output_file:
                 with open(output_file, "w") as f:
                     f.write(text + "\n")
@@ -107,7 +120,7 @@ def main():
                 print(text)
             continue
 
-        # External programs
+        # --- External commands ---
         found_path = None
         if os.path.isfile(cmd) and os.access(cmd, os.X_OK):
             found_path = cmd
@@ -120,15 +133,36 @@ def main():
 
         if found_path:
             try:
+                stdout_target = None
+                stderr_target = None
                 if output_file:
-                    with open(output_file, "w") as f:
-                        subprocess.run([cmd] + parts[1:], executable=found_path, stdout=f)
-                else:
-                    subprocess.run([cmd] + parts[1:], executable=found_path)
+                    stdout_target = open(output_file, "w")
+                if error_file:
+                    stderr_target = open(error_file, "w")
+
+                subprocess.run(
+                    [cmd] + parts[1:],
+                    executable=found_path,
+                    stdout=stdout_target or None,
+                    stderr=stderr_target or None,
+                )
+
+                if stdout_target:
+                    stdout_target.close()
+                if stderr_target:
+                    stderr_target.close()
+
             except Exception as e:
                 print(f"{cmd}: execution failed ({e})")
+
         else:
-            print(f"{cmd}: command not found")
+            error_msg = f"{cmd}: command not found"
+            if error_file:
+                with open(error_file, "w") as ef:
+                    ef.write(error_msg + "\n")
+            else:
+                print(error_msg)
 
 if __name__ == "__main__":
     main()
+
