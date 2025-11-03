@@ -34,7 +34,9 @@ fi
 # Print the prompt to stdout (tests expect this). Do NOT echo the command.
 while true; do
   # Print prompt and flush
-  printf '$ '
+  printf "$ "
+  fflush() { : > /dev/null; }  # Dummy function to mimic fflush behavior
+  fflush
   # read a line; if EOF, exit loop
   if ! IFS= read -r line; then
     break
