@@ -4,28 +4,58 @@ import subprocess
 import shlex
 import readline
 
+# --- Global state to track repeated TAB presses ---
+last_prefix = ""
+tab_press_count = 0
 
-def completer(text, state):
-    """Autocomplete builtins and external executables in PATH."""
-    builtins = ["echo", "exit"]
 
-    # Collect matches from builtins
-    matches = [b for b in builtins if b.startswith(text)]
-
-    # Collect executables from PATH
+def get_executables_with_prefix(prefix):
+    """Return all executables in PATH that start with prefix."""
+    results = set()
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         if not os.path.isdir(directory):
             continue
         try:
             for fname in os.listdir(directory):
                 full_path = os.path.join(directory, fname)
-                if fname.startswith(text) and os.access(full_path, os.X_OK) and not os.path.isdir(full_path):
-                    matches.append(fname)
+                if fname.startswith(prefix) and os.access(full_path, os.X_OK) and not os.path.isdir(full_path):
+                    results.add(fname)
         except Exception:
             continue
+    return sorted(results)
 
-    # Remove duplicates
+
+def completer(text, state):
+    """Autocomplete builtins and executables with multi-match support."""
+    global last_prefix, tab_press_count
+
+    builtins = ["echo", "exit"]
+    matches = [b for b in builtins if b.startswith(text)]
+    matches += get_executables_with_prefix(text)
     matches = sorted(set(matches))
+
+    # --- Handle multi-match logic ---
+    if len(matches) > 1:
+        # If user presses TAB with the same prefix again → show all matches
+        if last_prefix == text:
+            tab_press_count += 1
+        else:
+            tab_press_count = 1
+            last_prefix = text
+
+        if tab_press_count == 1:
+            # First TAB → just ring a bell
+            sys.stdout.write("\a")
+            sys.stdout.flush()
+            return None
+        elif tab_press_count == 2:
+            # Second TAB → list all matches, then redisplay prompt
+            sys.stdout.write("\n" + "  ".join(matches) + "\n")
+            sys.stdout.write(f"$ {text}")
+            sys.stdout.flush()
+            return None
+    else:
+        tab_press_count = 0  # reset when unique or no match
 
     if state < len(matches):
         return matches[state] + " "
@@ -33,7 +63,6 @@ def completer(text, state):
 
 
 def main():
-    # Register completer
     readline.set_completer(completer)
     readline.parse_and_bind("tab: complete")
 
@@ -60,7 +89,7 @@ def main():
         if not parts:
             continue
 
-        # --- Handle redirections (>, 1>, 2>, >>, 1>>, 2>>) ---
+        # --- Handle redirections (>, >>, etc.) ---
         output_file = None
         error_file = None
         append_stdout = False
