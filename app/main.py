@@ -1,175 +1,72 @@
-from contextlib import redirect_stdout
+from subprocess import Popen
 import os
-import shlex
+from os.path import basename
+import threading
 import sys
-import io
-import subprocess
 
-sys.stdout.reconfigure(line_buffering=True)
+IS_EXECUTABLE = 1
+IS_BUILT_IN = 0
 
-
-def handle_builtin(parts):
-    # parts is a list of tokens for built-in commands: echo, exit, type, pwd, cd
-    cmd = parts[0] if parts else ""
-
-    if cmd == "echo":
-        # print arguments joined by spaces and a trailing newline
-        print(" ".join(parts[1:]))
-
-    elif cmd == "exit":
-        # exit the program
-        sys.exit(0)
-
-    elif cmd == "pwd":
-        print(os.getcwd())
-
-    elif cmd == "cd":   # <-- THIS IS THE 'cd' BLOCK
-        target = parts[1] if len(parts) > 1 else os.path.expanduser("~")
+# "built-in"
+def line_to_basename(stdin, stdout, _unused_args):
+    for line in stdin:
+        line = line.strip()
         try:
-            os.chdir(target)   # attempt to change directory
-        except Exception as e:
-            print(f"cd: {e}")  # if it fails, print the error message
+            print(basename(line), file=stdout)
+        except:
+            pass
+    stdout.close()
 
-    elif cmd == "type":
-        name = parts[1] if len(parts) > 1 else ""
-        if name in {"echo", "exit", "type", "pwd", "cd"}:
-            print(f"{name} is a shell builtin")
-        else:
-            # search PATH
-            found = None
-            for directory in os.environ.get("PATH", "").split(os.pathsep):
-                full = os.path.join(directory, name)
-                if os.path.isfile(full) and os.access(full, os.X_OK):
-                    found = full
-                    break
-            if found:
-                print(f"{name} is {found}")
-            else:
-                print(f"{name}: not found")
-    else:
-        # unknown builtin
-        print(f"{cmd}: command not found")
 
-def main():
-    while True:
-        sys.stdout.write("$ ")
-        sys.stdout.flush()
-        try:
-            command_line = input()
-        except EOFError:
-            break
+pipeline = [
+    (fr'where /r {os.environ['USERPROFILE']} *.txt', IS_EXECUTABLE),
+    (line_to_basename, IS_BUILT_IN),
+    (r'findstr /i "test.*\.txt$"', IS_EXECUTABLE),
+]
 
-        # Handle autocompletion test case:
-        # If user types "xyz_" and hits TAB, emulate completion.
-        # The Codecrafters tester injects <TAB> as "\t" in input().
-        if "\t" in command_line:
-            # Extract text before the tab character
-            prefix = command_line.replace("\t", "").strip()
+def pipeline_test(pipeline, pl_stdin=sys.stdin, pl_stdout=sys.stdout):
+    processes = []
+    threads = []
 
-            # Search PATH for matching executables
-            matches = []
-            for directory in os.environ.get("PATH", "").split(os.pathsep):
-                if not os.path.isdir(directory):
-                    continue
-                for file in os.listdir(directory):
-                    if file.startswith(prefix) and os.access(os.path.join(directory, file), os.X_OK):
-                        matches.append(file)
+    # Create pipes
+    read_fd = []
+    write_fd = []
+    for _i in range(len(pipeline)-1):
+        r, w = os.pipe()
+        read_fd.append(r)
+        write_fd.append(w)
+    # Add the ends. We dup to ensure we don't lose our Shell's hold
+    read_fd = [os.dup(pl_stdin.fileno())] + read_fd
+    write_fd = write_fd + [os.dup(pl_stdout.fileno())]
 
-            # If one match exists, autocomplete
-            if len(matches) == 1:
-                completed = matches[0]
-                sys.stdout.write(f"\r$ {completed}\n")
-                sys.stdout.flush()
-                command_line = completed
-            else:
-                # No match or multiple matches — keep as-is
-                sys.stdout.write(f"\r$ {prefix}\n")
-                sys.stdout.flush()
-                command_line = prefix
+    # We wrap in thread in normal files to avoid double free later
+    # in case thread forgot to close properly.
+    thread_files = []
+    for (cmd, kind), w_fd, r_fd in zip(pipeline, write_fd, read_fd):
+        if kind == IS_EXECUTABLE:
+            process = Popen(cmd, stdin=r_fd, stdout=w_fd)
+            # Subprocess closes the handles now.
+            # Close our hold on the handles
+            os.close(r_fd)
+            os.close(w_fd)
+            processes.append(process)
+        elif kind == IS_BUILT_IN:
+            # We wrap in File to prevent double os.close later.
+            r_file = os.fdopen(r_fd, 'r')
+            w_file = os.fdopen(w_fd, 'w')
+            thread_files.extend((r_file, w_file,))
+            thread = threading.Thread(target=cmd, args=(r_file, w_file, "unused built-in arg"))
+            threads.append(thread)
+            thread.start()
 
-        command_line = command_line.strip()
-        if not command_line:
-            continue
+    for p in processes:
+        p.wait()
+    for t in threads:
+        t.join()
+    # Ensure we closed our thread files
+    for f in thread_files:
+        f.close()
 
-        # -------------------------------
-        # PIPELINE SUPPORT (unchanged)
-        # -------------------------------
-        if "|" in command_line:
-            commands = [shlex.split(segment.strip()) for segment in command_line.split("|")]
-            prev_process = None
 
-            for cmd_parts in commands:
-                if cmd_parts[0] in {"echo", "exit", "type", "pwd", "cd"}:
-                    buf = io.StringIO()
-                    with redirect_stdout(buf):
-                        handle_builtin(cmd_parts)
-                    output_data = buf.getvalue().encode()
-                    prev_process = subprocess.Popen(
-                        ["cat"],
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE
-                    )
-                    prev_process.stdin.write(output_data)
-                    prev_process.stdin.close()
-                else:
-                    process = subprocess.Popen(
-                        cmd_parts,
-                        stdin=prev_process.stdout if prev_process else None,
-                        stdout=subprocess.PIPE
-                    )
-                    if prev_process:
-                        prev_process.stdout.close()
-                    prev_process = process
-
-            if prev_process:
-                try:
-                    for line in iter(prev_process.stdout.readline, b""):
-                        if not line:
-                            break
-                        sys.stdout.buffer.write(line)
-                        sys.stdout.flush()
-                    prev_process.wait()
-                except KeyboardInterrupt:
-                    prev_process.terminate()
-                continue
-
-        # -------------------------------
-        # REGULAR COMMAND HANDLING (unchanged)
-        # -------------------------------
-        try:
-            lexer = shlex.shlex(command_line, posix=True)
-            lexer.whitespace_split = True
-            lexer.commenters = ""
-            parts = list(lexer)
-        except ValueError:
-            print("Error: unmatched quotes")
-            continue
-
-        if not parts:
-            continue
-
-        cmd = parts[0]
-        builtins = {"echo", "exit", "type", "pwd", "cd"}
-
-        if cmd in builtins:
-            buf = io.StringIO()
-            with redirect_stdout(buf):
-                handle_builtin(parts)
-            sys.stdout.write(buf.getvalue())
-            sys.stdout.flush()
-            continue
-
-        found_path = None
-        if os.path.isfile(cmd) and os.access(cmd, os.X_OK):
-            found_path = cmd
-        else:
-            for directory in os.environ.get("PATH", "").split(os.pathsep):
-                full_path = os.path.join(directory, cmd)
-                if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                    found_path = full_path
-                    break
-
-        if found_path:
-            subprocess.run([cmd] + parts[1:], executable=found_path)
-        else:
-            print(f"{cmd}: command not found")
+if __name__ == '__main__':
+    pipeline_test(pipeline)
