@@ -1,8 +1,9 @@
 import sys
 import os
+import subprocess
 
 def main():
-    # Define builtins
+    # Define shell builtins
     builtins = {"echo", "exit", "type"}
 
     while True:
@@ -10,14 +11,14 @@ def main():
         sys.stdout.flush()
 
         try:
-            command = input().strip()
+            command_line = input().strip()
         except EOFError:
-            break  # Exit cleanly on Ctrl+D
+            break  # End on Ctrl+D
 
-        if not command:
+        if not command_line:
             continue
 
-        parts = command.split(maxsplit=1)
+        parts = command_line.split()
         cmd = parts[0]
 
         # Handle 'exit'
@@ -29,10 +30,8 @@ def main():
 
         # Handle 'echo'
         elif cmd == "echo":
-            if len(parts) > 1:
-                print(parts[1])
-            else:
-                print("")
+            print(" ".join(parts[1:]))
+            continue
 
         # Handle 'type'
         elif cmd == "type":
@@ -40,31 +39,39 @@ def main():
                 print("type: not found")
                 continue
 
-            target = parts[1].strip()
-
-            # Case 1: Builtin command
+            target = parts[1]
             if target in builtins:
                 print(f"{target} is a shell builtin")
-                continue
+            else:
+                found = False
+                path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+                for directory in path_dirs:
+                    full_path = os.path.join(directory, target)
+                    if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+                        print(f"{target} is {full_path}")
+                        found = True
+                        break
+                if not found:
+                    print(f"{target}: not found")
+            continue
 
-            # Case 2: Search PATH for executables
+        # Handle external programs
+        else:
+            found_path = None
             path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-            found = False
-
             for directory in path_dirs:
-                full_path = os.path.join(directory, target)
+                full_path = os.path.join(directory, cmd)
                 if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
-                    print(f"{target} is {full_path}")
-                    found = True
+                    found_path = full_path
                     break
 
-            # Case 3: Not found
-            if not found:
-                print(f"{target}: not found")
-
-        # Handle invalid commands
-        else:
-            print(f"{command}: command not found")
+            if found_path:
+                try:
+                    subprocess.run([found_path] + parts[1:])
+                except Exception as e:
+                    print(f"{cmd}: execution failed ({e})")
+            else:
+                print(f"{cmd}: command not found")
 
 if __name__ == "__main__":
     main()
