@@ -1,15 +1,26 @@
-#!/bin/sh
-#
-# Use this script to run your program LOCALLY.
-#
-# Note: Changing this script WILL NOT affect how CodeCrafters runs your program.
-#
-# Learn more: https://codecrafters.io/program-interface
+#!/usr/bin/env bash
+# your_program.sh - execute a single command or a pipeline passed as arguments
+# Do not print the command itself; only print the command's stdout/stderr.
 
-set -e # Exit early if any commands fail
+set -euo pipefail
 
-# Copied from .codecrafters/run.sh
-#
-# - Edit this to change how your program runs locally
-# - Edit .codecrafters/run.sh to change how your program runs remotely
-exec uv run --quiet -m app.main "$@"
+# If you previously had `set -x` for debugging, remove it or disable it:
+# set +x
+
+# If you used an explicit echo of the command, remove that.
+# Example of running the passed command(s):
+if [ "$#" -eq 0 ]; then
+  echo "No command provided" >&2
+  exit 1
+fi
+
+# Execute the command exactly as given (preserve pipelines)
+# Use "$@" so that quoted args are preserved.
+# Note: If you expect a single string command you need eval, but avoid echoing it first.
+if [ "$#" -eq 1 ]; then
+  # single argument — could be a pipeline string; use eval but do NOT echo it
+  eval "$1"
+else
+  # multiple args — run them directly
+  "$@"
+fi
