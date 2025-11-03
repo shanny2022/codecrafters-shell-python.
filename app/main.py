@@ -3,7 +3,7 @@ import os
 import shlex
 import subprocess
 import io
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout
 
 
 # ------------------------------
@@ -47,18 +47,17 @@ def handle_builtin(parts):
 
 
 # ------------------------------
-# COMMAND EXECUTION (BUILTIN OR EXTERNAL)
+# RUN COMMAND HELPER
 # ------------------------------
 def run_command(cmd_parts, input_data=None):
-    """Runs a command (builtin or external), feeding input_data to stdin if provided.
-    Returns the command's stdout output as bytes."""
+    """Runs a command (builtin or external), returns its stdout as bytes."""
     builtins = {"echo", "exit", "type", "pwd", "cd"}
 
     if cmd_parts[0] in builtins:
         buf = io.StringIO()
         with redirect_stdout(buf):
             handle_builtin(cmd_parts)
-        return buf.getvalue().encode()  # Return stdout as bytes
+        return buf.getvalue().encode()
     else:
         result = subprocess.run(
             cmd_parts,
@@ -85,18 +84,50 @@ def main():
         if not command_line:
             continue
 
-        # --- Handle pipelines ---
+        # --- Handle pipelines (streaming) ---
         if "|" in command_line:
             commands = [shlex.split(segment.strip()) for segment in command_line.split("|")]
-            input_data = None
+            prev_process = None
+
             for cmd_parts in commands:
-                input_data = run_command(cmd_parts, input_data)
-            if input_data:
-                sys.stdout.buffer.write(input_data)
-                sys.stdout.flush()
+                if cmd_parts[0] in {"echo", "exit", "type", "pwd", "cd"}:
+                    # Handle builtins: run, capture output, and stream it via a pipe
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        handle_builtin(cmd_parts)
+                    output_data = buf.getvalue().encode()
+                    prev_process = subprocess.Popen(
+                        ["cat"],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE
+                    )
+                    prev_process.stdin.write(output_data)
+                    prev_process.stdin.close()
+                else:
+                    # External command (stream via Popen)
+                    process = subprocess.Popen(
+                        cmd_parts,
+                        stdin=prev_process.stdout if prev_process else None,
+                        stdout=subprocess.PIPE
+                    )
+                    if prev_process:
+                        prev_process.stdout.close()
+                    prev_process = process
+
+            # Output final process stdout in real-time
+            if prev_process:
+                try:
+                    for line in iter(prev_process.stdout.readline, b""):
+                        if not line:
+                            break
+                        sys.stdout.buffer.write(line)
+                        sys.stdout.flush()
+                    prev_process.wait()
+                except KeyboardInterrupt:
+                    prev_process.terminate()
             continue
 
-        # --- Parse command with shlex (for quotes, escapes, etc.) ---
+        # --- Parse command with shlex ---
         try:
             lexer = shlex.shlex(command_line, posix=True)
             lexer.whitespace_split = True
@@ -109,13 +140,13 @@ def main():
         if not parts:
             continue
 
-        # --- Redirection handling ---
+        # --- Redirection flags ---
         stdout_file = None
         stderr_file = None
         append_stdout = False
         append_stderr = False
 
-        # Check for append redirection (>>, 1>>, 2>>)
+        # Append redirections
         if ">>" in parts:
             idx = parts.index(">>")
             stdout_file = parts[idx + 1] if idx + 1 < len(parts) else None
@@ -132,7 +163,7 @@ def main():
             append_stderr = True
             parts = parts[:idx]
 
-        # Check for overwrite redirection (> , 1> , 2>)
+        # Overwrite redirections
         elif ">" in parts:
             idx = parts.index(">")
             stdout_file = parts[idx + 1] if idx + 1 < len(parts) else None
