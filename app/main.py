@@ -1,3 +1,48 @@
+from contextlib import redirect_stdout
+import os
+import shlex
+import sys
+import io
+import subprocess
+
+
+def handle_builtin(parts):
+    # parts is a list of tokens for built-in commands: echo, exit, type, pwd, cd
+    cmd = parts[0] if parts else ""
+    if cmd == "echo":
+        # print arguments joined by spaces and a trailing newline
+        print(" ".join(parts[1:]))
+    elif cmd == "exit":
+        # exit the program
+        sys.exit(0)
+    elif cmd == "pwd":
+        print(os.getcwd())
+    elif cmd == "cd":
+        target = parts[1] if len(parts) > 1 else os.path.expanduser("~")
+        try:
+            os.chdir(target)
+        except Exception as e:
+            print(f"cd: {e}")
+    elif cmd == "type":
+        name = parts[1] if len(parts) > 1 else ""
+        if name in {"echo", "exit", "type", "pwd", "cd"}:
+            print(f"{name} is a shell builtin")
+        else:
+            # search PATH
+            found = None
+            for directory in os.environ.get("PATH", "").split(os.pathsep):
+                full = os.path.join(directory, name)
+                if os.path.isfile(full) and os.access(full, os.X_OK):
+                    found = full
+                    break
+            if found:
+                print(f"{name} is {found}")
+            else:
+                print(f"{name}: not found")
+    else:
+        # unknown builtin
+        print(f"{cmd}: command not found")
+
 def main():
     while True:
         sys.stdout.write("$ ")
@@ -122,4 +167,3 @@ def main():
             subprocess.run([cmd] + parts[1:], executable=found_path)
         else:
             print(f"{cmd}: command not found")
-
