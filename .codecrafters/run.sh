@@ -6,6 +6,7 @@
 #
 # Learn more: https://codecrafters.io/program-interface
 
-set -e # Exit on failure
+# Exit early if any commands fail
+set -e
 
-exec uv run --quiet -m app.main "$@"
+exec pipenv run python3 -u -m app.main "$@"

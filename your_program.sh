@@ -1,18 +1,15 @@
-#!/usr/bin/env bash
-# your_program.sh - simple interactive runner used by the test harness.
-# Behavior required by the tests:
-#  - Before each command, print the prompt string "$ " (and flush).
-#  - Do NOT echo the command itself to stdout.
-#  - Execute the command and leave only the command output on stdout.
-while true; do
-  # Print the prompt
-  echo -n "$ "
-  # Read a command from stdin
-  if ! read -r cmd; then
-    break
-  fi
-  # Execute the command and capture its output
-  eval "$cmd"
-done
+#!/bin/sh
+#
+# Use this script to run your program LOCALLY.
+#
+# Note: Changing this script WILL NOT affect how CodeCrafters runs your program.
+#
+# Learn more: https://codecrafters.io/program-interface
 
+set -e # Exit early if any commands fail
 
+# Copied from .codecrafters/run.sh
+#
+# - Edit this to change how your program runs locally
+# - Edit .codecrafters/run.sh to change how your program runs remotely
+exec pipenv run python3 -u -m app.main "$@"
