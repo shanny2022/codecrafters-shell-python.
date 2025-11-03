@@ -5,6 +5,8 @@ import sys
 import io
 import subprocess
 
+sys.stdout.reconfigure(line_buffering=True)
+
 
 def handle_builtin(parts):
     # parts is a list of tokens for built-in commands: echo, exit, type, pwd, cd
@@ -52,7 +54,6 @@ def main():
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
-
         try:
             command_line = input()
         except EOFError:
